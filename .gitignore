@@ -1,0 +1,5 @@
+.pio
+# sdkconfig contains user-entered WiFi credentials – keep it local
+sdkconfig
+# but keep sdkconfig.defaults (hardware defaults, no secrets)
+!sdkconfig.defaults

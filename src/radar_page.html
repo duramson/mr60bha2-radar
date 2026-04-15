@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Radar</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #0f0f1a;
+        color: #c8c8d4;
+        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .wrap {
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+      }
+      .panel {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        min-width: 0;
+      }
+      canvas {
+        background: #0a0a14;
+        border-radius: 8px;
+      }
+      .info-panel {
+        width: 280px;
+        padding: 14px;
+        overflow-y: auto;
+        border-left: 1px solid #1a1a2e;
+        font-size: 13px;
+        background: #0c0c18;
+      }
+      .card {
+        background: #14142a;
+        border: 1px solid #1e1e3a;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .card h3 {
+        color: #7a8aaa;
+        font-size: 12px;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        border-bottom: 1px solid #1a1a30;
+      }
+      .row:last-child { border-bottom: none; }
+      .row .lbl { color: #6a6a80; }
+      .row .val { color: #e0e0f0; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .val.active { color: #4aeadc; }
+      .val.warn { color: #f0a050; }
+      .status {
+        display: inline-block;
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .status.on { background: #4aeadc; box-shadow: 0 0 8px #4aeadc80; }
+      .status.off { background: #3a3a50; }
+      .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+      .legend span { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #6a6a80; }
+      .legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+      #connStatus {
+        position: fixed;
+        top: 10px; right: 10px;
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        z-index: 100;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      #connStatus.ok { background: #0a2a2a; color: #4aeadc; border: 1px solid #1a3a3a; }
+      #connStatus.err { background: #2a0a0a; color: #f06060; border: 1px solid #3a1a1a; }
+      .ctrl { padding: 5px 0; }
+      .ctrl label {
+        display: flex; align-items: center; gap: 6px;
+        cursor: pointer; color: #6a6a80; font-size: 12px;
+      }
+      .ctrl input[type="checkbox"] { accent-color: #4aeadc; width: 14px; height: 14px; }
+      .ctrl input[type="range"] { width: 100%; accent-color: #4aeadc; height: 4px; margin-top: 4px; }
+      .ctrl .range-row {
+        display: flex; justify-content: space-between; align-items: center; margin-top: 4px;
+      }
+      .ctrl .range-row .lbl { color: #4a4a60; font-size: 11px; }
+      .ctrl .range-row .val { color: #4aeadc; font-size: 11px; font-weight: 600; }
+      #vitalsCard { display: none; }
+      .vitals-val {
+        font-size: 22px; font-weight: 700; color: #4aeadc;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+      .vitals-unit { font-size: 10px; color: #4a6a6a; margin-left: 2px; }
+      .vitals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .vitals-item { padding: 6px 0; }
+      .vitals-label { font-size: 10px; color: #6a6a80; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+      @media (max-width: 700px) {
+        .wrap { flex-direction: column; }
+        .info-panel { width: 100%; max-height: 35vh; border-left: none; border-top: 1px solid #1a1a2e; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="connStatus" class="err">DISCONNECTED</div>
+    <div class="wrap">
+      <div class="panel">
+        <canvas id="radar" width="600" height="600"></canvas>
+      </div>
+      <div class="info-panel">
+
+        <div class="card">
+          <h3><span class="status off" id="presenceLight"></span>Presence</h3>
+          <div class="row">
+            <span class="lbl">Targets</span>
+            <span class="val" id="vTargets">0</span>
+          </div>
+          <div class="row">
+            <span class="lbl">Nearest</span>
+            <span class="val" id="vNearest">--</span>
+          </div>
+        </div>
+
+        <!-- Vitals card: shown automatically when sensor sends vitals data -->
+        <div class="card" id="vitalsCard">
+          <h3>Vital Signs</h3>
+          <div class="vitals-grid">
+            <div class="vitals-item">
+              <div class="vitals-label">Heart Rate</div>
+              <div>
+                <span class="vitals-val" id="vHeart">--</span>
+                <span class="vitals-unit">BPM</span>
+              </div>
+            </div>
+            <div class="vitals-item">
+              <div class="vitals-label">Breath Rate</div>
+              <div>
+                <span class="vitals-val" id="vBreath">--</span>
+                <span class="vitals-unit">BPM</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Targets</h3>
+          <div id="targetDetail" style="font-size: 11px; color: #6a6a80">No targets</div>
+        </div>
+
+        <div class="card">
+          <h3>Controls</h3>
+          <div class="ctrl">
+            <label><input type="checkbox" id="trailOn" checked /> Show Trails</label>
+          </div>
+          <div class="ctrl">
+            <div class="range-row">
+              <span class="lbl">Range</span>
+              <span class="val" id="rangeV">6 m</span>
+            </div>
+            <input type="range" id="rangeSlider" min="1" max="8" value="6" step="1" />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Detection Zone</h3>
+          <div class="ctrl">
+            <label><input type="checkbox" id="zoneOn" /> Enable Zone</label>
+          </div>
+          <div class="ctrl">
+            <div class="range-row">
+              <span class="lbl">Width</span>
+              <span class="val" id="zoneWV">2.0 m</span>
+            </div>
+            <input type="range" id="zoneW" min="0.5" max="6" value="2" step="0.1" />
+          </div>
+          <div class="ctrl">
+            <div class="range-row">
+              <span class="lbl">Depth</span>
+              <span class="val" id="zoneDV">3.0 m</span>
+            </div>
+            <input type="range" id="zoneD" min="0.5" max="6" value="3" step="0.1" />
+          </div>
+          <div class="ctrl">
+            <div class="range-row">
+              <span class="lbl">Offset</span>
+              <span class="val" id="zoneOV">0.0 m</span>
+            </div>
+            <input type="range" id="zoneO" min="-3" max="3" value="0" step="0.05" />
+            <div class="range-row">
+              <span class="lbl">← left</span>
+              <span class="lbl">right →</span>
+            </div>
+          </div>
+          <div class="row">
+            <span class="lbl">In Zone</span>
+            <span class="val" id="vInZone">--</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Legend</h3>
+          <div class="legend">
+            <span><div class="dot" style="background:#4aeadc"></div> T0</span>
+            <span><div class="dot" style="background:#e060c0"></div> T1</span>
+            <span><div class="dot" style="background:#f0b040"></div> T2</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      /* ── Configuration ─────────────────────────────────────────────────────
+       *
+       * WebSocket URL is read from the ?ws= query parameter.
+       * If omitted, defaults to ws(s)://<host>/ws
+       *
+       * Examples:
+       *   index.html                              → ws://thishost/ws
+       *   index.html?ws=ws://192.168.1.5/ws       → specific host
+       *   index.html?ws=wss://radar.example.com/stream
+       *
+       * Schema expected on the WebSocket (all units SI):
+       * {
+       *   "targets": [
+       *     { "x": -0.78, "y": 1.71, "speed": -0.16, "dist": 1.89, "angle": -24.5 }
+       *   ],
+       *   "vitals": {                    // optional
+       *     "heart_rate": 72.0,
+       *     "breath_rate": 16.5
+       *   },
+       *   "presence": true               // optional
+       * }
+       */
+      function wsUrl() {
+        const param = new URLSearchParams(location.search).get("ws");
+        if (param) return param;
+        const proto = location.protocol === "https:" ? "wss:" : "ws:";
+        return proto + "//" + location.host + "/ws";
+      }
+
+      const C = document.getElementById("radar"),
+        ctx = C.getContext("2d");
+      let RANGE = 6;
+      const COLORS = ["#4aeadc", "#e060c0", "#f0b040"];
+      const TRAIL_MAX = 40;
+      let data = null;
+
+      /* ── State ─────────────────────────────────────────────────────────── */
+      const trails = {}; // idx → [{x,y,ts}, ...]
+
+      /* ── Zone helpers ──────────────────────────────────────────────────── */
+      const $ = (id) => document.getElementById(id);
+      function zoneEnabled() { return $("zoneOn").checked; }
+      function zoneW()       { return parseFloat($("zoneW").value); }
+      function zoneD()       { return parseFloat($("zoneD").value); }
+      function zoneO()       { return parseFloat($("zoneO").value); }
+      function inZone(x, y) {
+        if (!zoneEnabled()) return true;
+        const o = zoneO(), w = zoneW();
+        return x >= o - w / 2 && x <= o + w / 2 && y >= 0 && y <= zoneD();
+      }
+
+      /* ── Controls ──────────────────────────────────────────────────────── */
+      function trailEnabled() { return $("trailOn").checked; }
+      document.addEventListener("DOMContentLoaded", () => {
+        $("rangeSlider").oninput = function () {
+          RANGE = parseInt(this.value);
+          $("rangeV").textContent = RANGE + " m";
+        };
+        $("zoneW").oninput = function () { $("zoneWV").textContent = parseFloat(this.value).toFixed(1) + " m"; };
+        $("zoneD").oninput = function () { $("zoneDV").textContent = parseFloat(this.value).toFixed(1) + " m"; };
+        $("zoneO").oninput = function () { $("zoneOV").textContent = parseFloat(this.value).toFixed(1) + " m"; };
+      });
+
+      /* ── Canvas resize ─────────────────────────────────────────────────── */
+      function resize() {
+        const p = C.parentElement;
+        const s = Math.min(p.clientWidth, p.clientHeight) - 32;
+        C.width = C.height = Math.max(s, 200);
+      }
+      resize();
+      window.addEventListener("resize", resize);
+
+      /* ── WebSocket with exponential backoff ────────────────────────────── */
+      let backoff = 1000;
+      function connect() {
+        const url = wsUrl();
+        const ws = new WebSocket(url);
+        ws.onopen = () => {
+          backoff = 1000;
+          $("connStatus").className = "ok";
+          $("connStatus").textContent = "CONNECTED";
+        };
+        ws.onclose = () => {
+          $("connStatus").className = "err";
+          $("connStatus").textContent = "DISCONNECTED";
+          setTimeout(connect, Math.min(backoff, 16000));
+          backoff = Math.min(backoff * 2, 16000);
+        };
+        ws.onerror = () => ws.close();
+        ws.onmessage = (e) => {
+          try {
+            data = JSON.parse(e.data);
+            processFrame(data);
+          } catch (_) {}
+        };
+      }
+      connect();
+
+      /* ── Frame processing ──────────────────────────────────────────────── */
+      function processFrame(d) {
+        if (!d || !d.targets) return;
+        const now = Date.now();
+        const seenIdx = new Set();
+        d.targets.forEach((t, i) => {
+          seenIdx.add(i);
+          if (!trails[i]) trails[i] = [];
+          // x, y are already in metres
+          trails[i].push({ x: t.x, y: t.y, ts: now });
+          if (trails[i].length > TRAIL_MAX) trails[i].shift();
+        });
+        for (const k of Object.keys(trails)) {
+          if (!seenIdx.has(parseInt(k))) {
+            const last = trails[k][trails[k].length - 1];
+            if (now - last.ts > 2000) delete trails[k];
+          }
+        }
+      }
+
+      /* ── Drawing ───────────────────────────────────────────────────────── */
+      function drawRadar() {
+        const W = C.width, H = C.height, cx = W / 2, cy = H - 24;
+        const scale = (H - 48) / RANGE;
+        ctx.clearRect(0, 0, W, H);
+
+        /* Grid arcs */
+        ctx.lineWidth = 1;
+        for (let r = 0.5; r <= RANGE; r += 0.5) {
+          const isWhole = Math.abs(r - Math.round(r)) < 0.01;
+          ctx.strokeStyle = isWhole ? "#1e1e3a" : "#14142a";
+          ctx.setLineDash(isWhole ? [] : [4, 4]);
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * scale, Math.PI, 2 * Math.PI);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (isWhole) {
+            ctx.fillStyle = "#3a3a60";
+            ctx.font = "10px system-ui,sans-serif";
+            ctx.fillText(r + "m", cx + r * scale + 4, cy - 4);
+          }
+        }
+
+        /* Angle lines */
+        ctx.strokeStyle = "#1e1e3a";
+        ctx.lineWidth = 1;
+        for (let a = -60; a <= 60; a += 30) {
+          const rad = (a * Math.PI) / 180 - Math.PI / 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(rad) * RANGE * scale, cy + Math.sin(rad) * RANGE * scale);
+          ctx.stroke();
+          if (a !== 0) {
+            ctx.fillStyle = "#2a2a50";
+            ctx.font = "9px system-ui,sans-serif";
+            const lx = cx + Math.cos(rad) * RANGE * scale * 1.02;
+            const ly = cy + Math.sin(rad) * RANGE * scale * 1.02;
+            ctx.fillText(a + "°", lx, ly);
+          }
+        }
+
+        /* Sensor marker */
+        ctx.fillStyle = "#4aeadc";
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#3a5a60";
+        ctx.font = "9px system-ui,sans-serif";
+        ctx.fillText("SENSOR", cx - 20, cy + 14);
+
+        if (!data || !data.targets) return;
+
+        /* Detection zone */
+        if (zoneEnabled()) {
+          const o = zoneO(), w = zoneW(), d = zoneD();
+          const zx = cx + (o - w / 2) * scale;
+          const zy = cy - d * scale;
+          ctx.save();
+          ctx.strokeStyle = "#f0606080";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(zx, zy, w * scale, d * scale);
+          ctx.fillStyle = "rgba(240,96,96,0.03)";
+          ctx.fillRect(zx, zy, w * scale, d * scale);
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+
+        /* Trails */
+        if (trailEnabled()) {
+          for (const [idx, tr] of Object.entries(trails)) {
+            if (tr.length < 2) continue;
+            const col = COLORS[parseInt(idx) % COLORS.length];
+            for (let j = 1; j < tr.length; j++) {
+              ctx.strokeStyle = col;
+              ctx.globalAlpha = (j / tr.length) * 0.35;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(cx + tr[j-1].x * scale, cy - tr[j-1].y * scale);
+              ctx.lineTo(cx + tr[j].x   * scale, cy - tr[j].y   * scale);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+          }
+        }
+
+        /* Targets */
+        let inZoneCount = 0;
+        data.targets.forEach((t, i) => {
+          // x, y are metres — no conversion needed
+          const tInZone = inZone(t.x, t.y);
+          if (tInZone) inZoneCount++;
+          const px = cx + t.x * scale, py = cy - t.y * scale;
+          const col = COLORS[i % COLORS.length];
+
+          if (!tInZone && zoneEnabled()) ctx.globalAlpha = 0.15;
+
+          ctx.shadowColor = col;
+          ctx.shadowBlur = tInZone ? 14 : 0;
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(px, py, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = "#e0e0f0";
+          ctx.font = "bold 11px system-ui,sans-serif";
+          ctx.fillText("T" + i, px + 10, py - 8);
+          ctx.fillStyle = "#6a6a80";
+          ctx.font = "10px system-ui,sans-serif";
+          ctx.fillText("(" + t.x.toFixed(2) + ", " + t.y.toFixed(2) + ")", px + 10, py + 4);
+
+          /* Velocity arrow — speed is in m/s */
+          if (t.speed !== undefined && Math.abs(t.speed) > 0.01) {
+            const dir = t.speed > 0 ? -1 : 1;
+            // 1 m/s → 30% of scale pixels, max 60px
+            const arrowLen = Math.min(Math.abs(t.speed) * scale * 0.3, 60);
+            const angle = Math.atan2(-(py - cy), px - cx);
+            const ex = px + Math.cos(angle) * arrowLen * dir;
+            const ey = py + Math.sin(angle) * arrowLen * dir;
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            const ha = 0.4;
+            ctx.beginPath();
+            ctx.moveTo(ex, ey);
+            ctx.lineTo(ex - Math.cos(angle - ha) * 8 * dir, ey - Math.sin(angle - ha) * 8 * dir);
+            ctx.moveTo(ex, ey);
+            ctx.lineTo(ex - Math.cos(angle + ha) * 8 * dir, ey - Math.sin(angle + ha) * 8 * dir);
+            ctx.stroke();
+            ctx.lineWidth = 1;
+            ctx.fillStyle = col;
+            ctx.font = "9px system-ui,sans-serif";
+            ctx.fillText((t.speed * 100 | 0) / 100 + "m/s", ex + 5, ey);
+          }
+          ctx.globalAlpha = 1;
+        });
+
+        if (zoneEnabled() && data.targets) {
+          $("vInZone").textContent = inZoneCount + " / " + data.targets.length;
+        } else {
+          $("vInZone").textContent = "--";
+        }
+      }
+
+      /* ── Info panel ────────────────────────────────────────────────────── */
+      function updateInfo() {
+        if (!data) return;
+        const n = data.targets ? data.targets.length : 0;
+        const pl = $("presenceLight");
+        pl.className = "status " + (n > 0 || data.presence ? "on" : "off");
+        $("vTargets").textContent = n;
+        $("vTargets").className = "val" + (n > 0 ? " active" : "");
+
+        /* Nearest target */
+        if (n > 0) {
+          let minDist = Infinity;
+          data.targets.forEach((t) => { if (t.dist < minDist) minDist = t.dist; });
+          $("vNearest").textContent = minDist < 1 ? (minDist * 100 | 0) / 100 * 100 + "cm"
+                                                   : (minDist * 100 | 0) / 100 + "m";
+        } else {
+          $("vNearest").textContent = "--";
+        }
+
+        /* Vitals (auto-show when present in data) */
+        if (data.vitals) {
+          $("vitalsCard").style.display = "block";
+          $("vHeart").textContent   = data.vitals.heart_rate  != null ? data.vitals.heart_rate.toFixed(0)  : "--";
+          $("vBreath").textContent  = data.vitals.breath_rate != null ? data.vitals.breath_rate.toFixed(0) : "--";
+        } else {
+          $("vitalsCard").style.display = "none";
+        }
+
+        /* Target table */
+        if (n > 0) {
+          let html = '<table style="width:100%;border-collapse:collapse">';
+          html += '<tr style="color:#4a4a60;font-size:10px">'
+               + '<th style="text-align:left">ID</th>'
+               + '<th>X</th><th>Y</th><th>Dist</th><th>Speed</th><th>Angle</th>'
+               + '</tr>';
+          data.targets.forEach((t, i) => {
+            const col = COLORS[i % COLORS.length];
+            html += '<tr style="color:' + col + ';border-top:1px solid #1a1a30">';
+            html += '<td style="font-weight:bold">T' + i + '</td>';
+            html += '<td style="text-align:right">' + t.x.toFixed(2) + 'm</td>';
+            html += '<td style="text-align:right">' + t.y.toFixed(2) + 'm</td>';
+            html += '<td style="text-align:right">'
+                 + (t.dist != null ? t.dist.toFixed(2) + 'm' : '--')
+                 + '</td>';
+            html += '<td style="text-align:right">'
+                 + (t.speed != null ? (t.speed * 100 | 0) / 100 + 'm/s' : '--')
+                 + '</td>';
+            html += '<td style="text-align:right">'
+                 + (t.angle != null ? t.angle.toFixed(1) + '°' : '--')
+                 + '</td>';
+            html += '</tr>';
+          });
+          html += '</table>';
+          $("targetDetail").innerHTML = html;
+        } else {
+          $("targetDetail").textContent = "No targets";
+        }
+      }
+
+      /* ── Render loop ───────────────────────────────────────────────────── */
+      function frame() {
+        drawRadar();
+        updateInfo();
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

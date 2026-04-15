@@ -1,0 +1,18 @@
+menu "MR60BHA2 Radar"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default ""
+        help
+            SSID (network name) of your WiFi network.
+
+    config WIFI_PASS
+        string "WiFi Password"
+        default ""
+        help
+            Password for your WiFi network.
+            Note: if your password contains special characters like '#', set it
+            via environment variable instead:
+              idf.py -DCONFIG_WIFI_PASS='your#pass' build
+
+endmenu
