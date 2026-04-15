@@ -27,3 +27,9 @@ jobs:
 
       - name: Compile firmware
         run: pio run -e esp32-c6-devkitc-1
+        
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: mr60bha2-firmware
+          path: .pio/build/esp32-c6-devkitc-1/firmware.bin
